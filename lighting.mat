@@ -1,0 +1,265 @@
+% Lighting Information (Type 1 = LF, Type 2 = LED) 
+
+length_l = [1.7, 1.0]; % Length of bar light 
+
+brightness = [830, 960]; % Lumens/light 
+
+EOL = [0.8, 0.85]; % Light derating factor 
+
+light_used = [0.487, 0.649]; % Percent of light reaching desired plane 
+
+num_lights = [7, 6]; 
+
+num_rows = [2, 2]; 
+
+num_cols = ceil(num_lights ./ num_rows); 
+
+last_col_rows = mod(num_lights, num_rows); 
+
+for type = 1:2 
+
+  if last_col_rows(type) == 0 
+
+      last_col_rows(type) = num_rows(type); 
+
+  end 
+
+end 
+
+ 
+
+%Analysis 
+
+for type = 1:2 
+
+  if type == 1 
+
+      type_name = 'Linear Fluorescent'; 
+
+  else 
+
+      type_name = 'LED'; 
+
+  end 
+
+disp(' '); 
+
+disp(strcat(type_name, ' Analysis')); 
+
+disp('-------------------------------'); 
+
+ 
+
+%Light Placement 
+
+col_distance = L / num_cols(type); 
+
+col_distance_adjust = col_distance / 2 * (1 - last_col_rows(type) / num_rows(type)); 
+
+row_distance = (W - (num_rows(type) * length_l(type))) / num_rows(type); 
+
+row_distance_last_col = (W - (last_col_rows(type) * length_l(type))) / last_col_rows(type); 
+
+x_coord = col_distance / 2:col_distance:(L - col_distance / 2); 
+
+x_coord = x_coord + col_distance_adjust; 
+
+y_coord = row_distance / 2:row_distance + length_l(type):(W - row_distance / 2); 
+
+y_coord_last_col = row_distance_last_col / 2:row_distance_last_col + length_l(type):(W - row_distance_last_col / 2); 
+
+%Calculations 
+
+z = h - s; % [ft] vertical distance from lights to desk 
+
+% Formatting vectors 
+
+X = 0:res:L; 
+
+Y = 0:res:W; 
+
+LX = length(X); 
+
+LY = length(Y); 
+
+Z = ones(LX, LY) * z; 
+
+% Adjust brightness by derating factor and coefficient of utilization 
+
+bright = EOL(type) * brightness(type) * light_used(type); 
+
+% Generate the light maps (sum them as you go) 
+
+lightTot = 0; 
+
+for c = 1:num_cols(type) - 1 
+
+for r = 1:num_rows(type) 
+
+   	lightTot = lightTot + barlight(X, Y, Z, x_coord(c), y_coord(r), ... 
+
+                                  	x_coord(c), y_coord(r) + length_l(type), res, bright); 
+
+end 
+
+end 
+
+% Last column separately to accommodate different spacing 
+
+for r = 1:last_col_rows(type) 
+
+lightTot = lightTot + barlight(X, Y, Z, x_coord(num_cols(type)), y_coord_last_col(r), ... 
+
+                              	x_coord(num_cols(type)), y_coord_last_col(r) + length_l(type), res, bright); 
+
+end 
+
+ 
+
+%Output 
+
+ 
+
+fprintf('Maximum Light Intensity: %.2f\n', max(lightTot(:))); 
+
+fprintf('Minimum Light Intensity: %.2f\n', min(lightTot(:))); 
+
+fprintf('Average Light Intensity: %.2f\n', mean(lightTot(:))); 
+
+fprintf('Light Intensity Variance: %.2f\n\n', var(lightTot(:))); 
+
+totalmax = max(lightTot(:)); 
+
+ 
+
+ 
+
+%Plot 
+
+ 
+
+figure('Position', [100, 100, 1050, 750]); 
+
+mesh(X, Y, lightTot); % Plot light intensity 
+
+axis([0 L 0 W 0 totalmax]); 
+
+ 
+
+% Uncomment line below (remove %) to get 2D overhead views 
+
+%view(2); 
+
+ 
+
+xlabel('Room Width (ft)', 'FontSize', 12); 
+
+ylabel('Room Length (ft)', 'FontSize', 12); 
+
+zlabel('Light Intensity (fc)', 'FontSize', 12); 
+
+title(sprintf('Light Intensity on Work Plane (%s) - Minimum = %.2f fc', type_name, min(lightTot(:))), 'FontSize', 13); 
+
+handle = colorbar; 
+
+xlabel(handle, 'Light Intensity (fc)', 'FontSize', 12); 
+
+%%%% Draw and label light placement %%%% 
+
+for c = 1:num_cols(type) - 1 
+
+for r = 1:num_rows(type) 
+
+   	line([x_coord(c) x_coord(c)], [y_coord(r) y_coord(r) + length_l(type)], ... 
+
+        	[totalmax totalmax], 'LineWidth', 3); 
+
+   	text(x_coord(c), y_coord(r), totalmax, sprintf('Light %d-%d', r, c)); 
+
+end 
+
+end 
+
+% Last column separately to accommodate different spacing 
+
+for r = 1:last_col_rows(type) 
+
+line([x_coord(num_cols(type)) x_coord(num_cols(type))], ... 
+
+    	[y_coord_last_col(r) y_coord_last_col(r) + length_l(type)], ... 
+
+    	[totalmax totalmax], 'LineWidth', 3); 
+
+text(x_coord(num_cols(type)), y_coord_last_col(r), totalmax, ... 
+
+    	sprintf('Light %d-%d', r, num_cols(type))); 
+
+end 
+
+ end 
+
+disp(' '); 
+
+ 
+
+%End 
+
+ 
+
+function light = barlight(X, Y, Z, x1, y1, x2, y2, res, bright) 
+
+% Ensure X and Y are 2D to match Z 
+
+[X, Y] = meshgrid(X, Y); 
+
+% Transpose Z if necessary 
+
+if size(Z) ~= size(X) 
+
+Z = Z.'; 
+
+end 
+
+% Ensure at least one segment 
+
+num_segments = max(1, round(sqrt((x2 - x1)^2 + (y2 - y1)^2) / res)); 
+
+x_points = linspace(x1, x2, num_segments); 
+
+y_points = linspace(y1, y2, num_segments); 
+
+% Initialize output matrix 
+
+light = zeros(size(X)); 
+
+% Debugging: Display array sizes 
+
+fprintf('Size of X: %s\n', mat2str(size(X)));   
+
+fprintf('Size of Y: %s\n', mat2str(size(Y)));   
+
+fprintf('Size of Z (after fix): %s\n', mat2str(size(Z)));   
+
+fprintf('Size of x_points: %s\n', mat2str(size(x_points)));   
+
+fprintf('Size of y_points: %s\n', mat2str(size(y_points)));   
+
+% Loop over each segment of the barlight 
+
+for i = 1:num_segments 
+
+% Compute distance from each grid point to the current segment 
+
+d = sqrt((X - x_points(i)).^2 + (Y - y_points(i)).^2 + Z.^2); 
+
+% Prevent division by zero 
+
+d(d == 0) = 1e-6; 
+
+% Apply inverse square law 
+
+light = light + bright ./ (4 * pi * d.^2); 
+
+end 
+
+ end 
